@@ -1,0 +1,2 @@
+protocol=smtp+smime; type=transport; class=edu.iu.uits.mail.SMimeSMTPTransport; vendor=Indiana University;
+protocol=smtps+smime; type=transport; class=edu.iu.uits.mail.SMimeSMTPSSLTransport; vendor=Indiana University;
