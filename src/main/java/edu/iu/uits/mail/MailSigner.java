@@ -9,20 +9,25 @@ import org.bouncycastle.asn1.smime.SMIMECapability;
 import org.bouncycastle.asn1.smime.SMIMECapabilityVector;
 import org.bouncycastle.asn1.smime.SMIMEEncryptionKeyPreferenceAttribute;
 import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.cert.jcajce.JcaCertStore;
+import org.bouncycastle.cms.jcajce.JcaSimpleSignerInfoGeneratorBuilder;
 import org.bouncycastle.mail.smime.SMIMEException;
 import org.bouncycastle.mail.smime.SMIMESignedGenerator;
+import org.bouncycastle.operator.OperatorCreationException;
+import org.bouncycastle.util.Store;
 
-import javax.activation.CommandMap;
-import javax.activation.MailcapCommandMap;
 import javax.mail.Address;
 import javax.mail.MessagingException;
+import javax.mail.Session;
+import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
+import java.security.cert.X509Certificate;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.security.*;
-import java.security.cert.*;
-import java.security.cert.Certificate;
+import java.security.cert.CertificateEncodingException;
+import java.security.cert.CertificateException;
 import java.util.*;
 
 @Slf4j
@@ -70,7 +75,7 @@ public class MailSigner {
                     log.debug(String.format("No key password found for %s.  Defaulting to using the keystore password.", signingAddress.get()));
                     emailKeyPassword = properties.getProperty("mail.keystore.password");
                 }
-                return Optional.of(MailSigner.signMessage(mimeMessage, (PrivateKey)keyStore.getKey(signingAddress.get(), emailKeyPassword.toCharArray()), keyStore.getCertificateChain(signingAddress.get())[0]));
+                return Optional.of(MailSigner.signMessage(mimeMessage, (PrivateKey)keyStore.getKey(signingAddress.get(), emailKeyPassword.toCharArray()), ((X509Certificate) keyStore.getCertificateChain(signingAddress.get())[0])));
             } else {
                 log.info("Could not find an email certificate for any of the from addresses: " + from);
                 return Optional.empty();
@@ -81,68 +86,67 @@ public class MailSigner {
         }
     }
 
-    public static MimeMessage signMessage(final MimeMessage message, PrivateKey privateKey, Certificate certificate) {
+    public static MimeMessage signMessage(final MimeMessage message, PrivateKey privateKey, X509Certificate certificate)  {
         try {
-            MailcapCommandMap mailcap = (MailcapCommandMap) CommandMap.getDefaultCommandMap();
+            Store certs = new JcaCertStore(Collections.singletonList(certificate));
 
-            mailcap.addMailcap("application/pkcs7-signature;; x-java-content-handler=org.bouncycastle.mail.smime.handlers.pkcs7_signature");
-            mailcap.addMailcap("application/pkcs7-mime;; x-java-content-handler=org.bouncycastle.mail.smime.handlers.pkcs7_mime");
-            mailcap.addMailcap("application/x-pkcs7-signature;; x-java-content-handler=org.bouncycastle.mail.smime.handlers.x_pkcs7_signature");
-            mailcap.addMailcap("application/x-pkcs7-mime;; x-java-content-handler=org.bouncycastle.mail.smime.handlers.x_pkcs7_mime");
-            mailcap.addMailcap("multipart/signed;; x-java-content-handler=org.bouncycastle.mail.smime.handlers.multipart_signed");
+            ASN1EncodableVector signedAttributes = new ASN1EncodableVector();
+            SMIMECapabilityVector caps = new SMIMECapabilityVector();
+            caps.addCapability(SMIMECapability.dES_EDE3_CBC);
+            caps.addCapability(SMIMECapability.rC2_CBC, 128);
+            caps.addCapability(SMIMECapability.dES_CBC);
+            caps.addCapability(SMIMECapability.aES256_CBC);
+            signedAttributes.add(new SMIMECapabilitiesAttribute(caps));
 
-            // Create the SMIMESignedGenerator
-            SMIMECapabilityVector capabilities = new SMIMECapabilityVector();
-            capabilities.addCapability(SMIMECapability.dES_EDE3_CBC);
-            capabilities.addCapability(SMIMECapability.rC2_CBC, 128);
-            capabilities.addCapability(SMIMECapability.dES_CBC);
-            capabilities.addCapability(SMIMECapability.aES256_CBC);
-            Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+            IssuerAndSerialNumber issuerAndSerialNumber = new IssuerAndSerialNumber(
+                    new X500Name(certificate.getIssuerDN().getName()), certificate.getSerialNumber());
+            signedAttributes.add(new SMIMEEncryptionKeyPreferenceAttribute(issuerAndSerialNumber));
 
-            ASN1EncodableVector attributes = new ASN1EncodableVector();
-            X500Name x500Name =  new X500Name(((X509Certificate) certificate)
-                    .getIssuerDN().getName());
-            IssuerAndSerialNumber issuerAndSerialNumber = new IssuerAndSerialNumber(x500Name, ((X509Certificate) certificate).getSerialNumber());
-            attributes.add(new SMIMEEncryptionKeyPreferenceAttribute(issuerAndSerialNumber));
-            attributes.add(new SMIMECapabilitiesAttribute(capabilities));
+            SMIMESignedGenerator gen = new SMIMESignedGenerator();
 
-            SMIMESignedGenerator signer = new SMIMESignedGenerator();
-            signer.addSigner(
-                    privateKey,
-                    (X509Certificate) certificate,
-                    "DSA".equals(privateKey.getAlgorithm()) ? SMIMESignedGenerator.DIGEST_SHA1
-                            : SMIMESignedGenerator.DIGEST_MD5,
-                    new AttributeTable(attributes), null);
+            gen.addSignerInfoGenerator(
+                    new JcaSimpleSignerInfoGeneratorBuilder().setProvider("BC")
+                            .setSignedAttributeGenerator(new AttributeTable(signedAttributes))
+                            .build("SHA1withRSA", privateKey, certificate));
 
-            // Add the list of certs to the generator
-            List<Certificate> certList = new ArrayList<Certificate>();
-            certList.add(certificate);
-            CertStore certs = CertStore.getInstance("Collection",
-                    new CollectionCertStoreParameters(certList), "BC");
-            signer.addCertificatesAndCRLs(certs);
+            gen.addCertificates(certs);
 
-            // Sign the message
-            MimeMultipart mm = signer.generate(message, "BC");
-            MimeMessage signedMessage = new MimeMessage(message.getSession());
-
-            // Set all original MIME headers in the signed message
-            Enumeration headers = message.getAllHeaderLines();
-            while (headers.hasMoreElements()) {
-                signedMessage.addHeaderLine((String) headers.nextElement());
+            // the message could be just a plain text message, or it could be a multipart message, let's handle both!
+            MimeBodyPart mimeBodyPart = new MimeBodyPart();
+            Object messageContent = message.getContent();
+            if (messageContent instanceof String) {
+                mimeBodyPart.setText((String) messageContent);
+            } else if (messageContent instanceof MimeMultipart) {
+                mimeBodyPart.setContent((MimeMultipart) messageContent);
             }
 
-            // Set the content of the signed message
-            signedMessage.setContent(mm);
-            return signedMessage;
-        } catch (NoSuchAlgorithmException |
-                SMIMEException |
-                CertStoreException |
-                InvalidAlgorithmParameterException |
-                MessagingException |
-                NoSuchProviderException e) {
-            log.error("Caught exception when attempting to sign a message. Message will be sent unsigned", e);
-        }
+            MimeMultipart signedMultipart = gen.generate(mimeBodyPart);
 
-        return message;
+            Properties props = System.getProperties();
+            Session session = Session.getDefaultInstance(props, null);
+
+            MimeMessage signedMessage = new MimeMessage(session);
+            signedMessage.setContent(signedMultipart, signedMultipart.getContentType());
+
+            // Set all original headers in the signed message EXCEPT for any pre-existing Content-Type header,
+            // our new Content-Type will be `multipart/signed`
+            Enumeration headers = message.getAllHeaderLines();
+            while (headers.hasMoreElements()) {
+                String headerLine = (String) headers.nextElement();
+                if (!headerLine.startsWith("Content-Type:")) {
+                    signedMessage.addHeaderLine(headerLine);
+                }
+            }
+            signedMessage.saveChanges();
+
+            return signedMessage;
+        } catch (CertificateEncodingException |
+                OperatorCreationException |
+                IOException |
+                MessagingException |
+                SMIMEException e) {
+            log.error("Caught exception when attempting to sign a message. Message will be sent unsigned", e);
+            return message;
+        }
     }
 }
