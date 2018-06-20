@@ -62,9 +62,11 @@
         <!-- Dependency Versions -->
         <bouncycastle.version>1.46</bouncycastle.version>
         <java-mail.version>1.6.1</java-mail.version>
-        <junit.version>5.1.0</junit.version>
+        <junit.jupiter.version>5.2.0</junit.jupiter.version>
+        <junit.platform.version>1.2.0</junit.platform.version>
         <logback.version>1.2.3</logback.version>
         <lombok.version>1.16.22</lombok.version>
+        <mockito.version>2.19.0</mockito.version>
         <slf4j.version>1.7.25</slf4j.version>
 
         <!-- Plugin Versions -->
@@ -74,6 +76,7 @@
         <plugins.nexus-staging.version>1.6.8</plugins.nexus-staging.version>
         <plugins.release.version>2.5.3</plugins.release.version>
         <plugins.source.version>3.0.1</plugins.source.version>
+        <plugins.surefire.version>2.21.0</plugins.surefire.version>
 
         <!-- Project Metadata -->
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -107,7 +110,7 @@
             <dependency>
                 <groupId>org.junit.jupiter</groupId>
                 <artifactId>junit-jupiter-engine</artifactId>
-                <version>${junit.version}</version>
+                <version>${junit.jupiter.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.projectlombok</groupId>
@@ -118,6 +121,11 @@
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-api</artifactId>
                 <version>${slf4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-junit-jupiter</artifactId>
+                <version>${mockito.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -145,7 +153,6 @@
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
-
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-engine</artifactId>
@@ -155,6 +162,11 @@
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -168,6 +180,17 @@
                     <source>${java.version}</source>
                     <target>${java.version}</target>
                 </configuration>
+            </plugin>
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${plugins.surefire.version}</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-surefire-provider</artifactId>
+                        <version>${junit.platform.version}</version>
+                    </dependency>
+                </dependencies>
             </plugin>
             <plugin>
                 <groupId>org.sonatype.plugins</groupId>

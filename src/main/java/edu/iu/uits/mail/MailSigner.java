@@ -34,6 +34,10 @@ import java.util.*;
 @Slf4j
 public class MailSigner {
 
+    public static final String CERT_PASSWORD_PROPERTY_TEMPLATE = "mail.keystore.%s.password";
+
+    private static final String LOCAL_ADDRESS_REGEX = "^(.*)@.*$";
+
     static {
         if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
             Security.addProvider(new BouncyCastleProvider());
@@ -61,6 +65,13 @@ public class MailSigner {
         }
     }
 
+    public MailSigner(Properties properties, KeyStore keyStore) {
+        this.properties = properties;
+        this.keyStore = keyStore;
+    }
+
+
+
     public Optional<MimeMessage> signMessage(MimeMessage mimeMessage) {
         if(keyStore == null) {
             log.warn("No keystore provided so the message will not be signed");
@@ -68,6 +79,7 @@ public class MailSigner {
         }
         try {
             Address[] from = mimeMessage.getFrom();
+
 
             Optional<String> signingAddress = Arrays.stream(from).map(Address::toString).filter(address -> {
                 try {
@@ -78,12 +90,9 @@ public class MailSigner {
             }).findFirst();
 
             if(signingAddress.isPresent()) {
-                String emailKeyPassword = properties.getProperty(String.format("mail.keystore.%s.password", signingAddress.get()));
-                if(emailKeyPassword == null || emailKeyPassword.trim().isEmpty()) {
-                    log.debug(String.format("No key password found for %s.  Defaulting to using the keystore password.", signingAddress.get()));
-                    emailKeyPassword = properties.getProperty("mail.keystore.password");
-                }
-                return Optional.of(MailSigner.signMessage(mimeMessage, (PrivateKey)keyStore.getKey(signingAddress.get(), emailKeyPassword.toCharArray()), ((X509Certificate) keyStore.getCertificateChain(signingAddress.get())[0])));
+                String alias = signingAddress.get();
+                String emailKeyPassword = getEmailPassword(alias);
+                return Optional.of(MailSigner.signMessage(mimeMessage, (PrivateKey)keyStore.getKey(alias, emailKeyPassword.toCharArray()), ((X509Certificate) keyStore.getCertificateChain(alias)[0])));
             } else {
                 log.info("Could not find an email certificate for any of the from addresses: " + from);
                 return Optional.empty();
@@ -92,6 +101,22 @@ public class MailSigner {
             log.error("Caught exception when attempting to sign a message.  The message will be sent unsigned.", e);
             return Optional.empty();
         }
+    }
+
+    protected String getEmailPassword(String alias) {
+        String emailKeyPassword = properties.getProperty(String.format(CERT_PASSWORD_PROPERTY_TEMPLATE, alias));
+        if (emailKeyPassword == null || emailKeyPassword.trim().isEmpty()) {
+            // try local part of address
+            final String localPart = alias.replaceAll(LOCAL_ADDRESS_REGEX, "$1");
+            log.debug(String.format("No key password found for %s.  Trying local portion, %s.", alias, localPart));
+            emailKeyPassword = properties.getProperty(String.format("mail.keystore.%s.password", localPart));
+            if (emailKeyPassword == null || emailKeyPassword.trim().isEmpty()) {
+                // default to keystore password
+                log.debug(String.format("No key password found for %s or %s.  Defaulting to using the keystore password.", alias, localPart));
+                emailKeyPassword = properties.getProperty("mail.keystore.password");
+            }
+        }
+        return emailKeyPassword;
     }
 
     public static MimeMessage signMessage(final MimeMessage message, PrivateKey privateKey, X509Certificate certificate)  {
