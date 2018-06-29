@@ -38,13 +38,6 @@ public class MailSigner {
 
     private static final String LOCAL_ADDRESS_REGEX = "^(.*)@.*$";
 
-    static {
-        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
-            Security.addProvider(new BouncyCastleProvider());
-        }
-    }
-
-
     private KeyStore keyStore;
     private Properties properties;
 
@@ -138,7 +131,7 @@ public class MailSigner {
             SMIMESignedGenerator gen = new SMIMESignedGenerator();
 
             gen.addSignerInfoGenerator(
-                    new JcaSimpleSignerInfoGeneratorBuilder().setProvider("BC")
+                    new JcaSimpleSignerInfoGeneratorBuilder().setProvider(new BouncyCastleProvider())
                             .setSignedAttributeGenerator(new AttributeTable(signedAttributes))
                             .build("SHA1withRSA", privateKey, certificate));
 
@@ -155,10 +148,7 @@ public class MailSigner {
 
             MimeMultipart signedMultipart = gen.generate(mimeBodyPart);
 
-            Properties props = System.getProperties();
-            Session session = Session.getDefaultInstance(props, null);
-
-            MimeMessage signedMessage = new MimeMessage(session);
+            MimeMessage signedMessage = new MimeMessage(message.getSession());
             signedMessage.setContent(signedMultipart, signedMultipart.getContentType());
 
             // Set all original headers in the signed message EXCEPT for any pre-existing Content-Type header,
