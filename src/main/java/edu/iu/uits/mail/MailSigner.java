@@ -19,7 +19,6 @@ import org.bouncycastle.util.Store;
 
 import javax.mail.Address;
 import javax.mail.MessagingException;
-import javax.mail.Session;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
@@ -143,7 +142,7 @@ public class MailSigner {
             if (messageContent instanceof String) {
                 mimeBodyPart.setText((String) messageContent);
             } else if (messageContent instanceof MimeMultipart) {
-                mimeBodyPart.setContent((MimeMultipart) messageContent);
+                mimeBodyPart.setContent((MimeMultipart) messageContent, message.getContentType());
             }
 
             MimeMultipart signedMultipart = gen.generate(mimeBodyPart);
