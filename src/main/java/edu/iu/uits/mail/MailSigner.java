@@ -140,9 +140,9 @@ public class MailSigner {
             MimeBodyPart mimeBodyPart = new MimeBodyPart();
             Object messageContent = message.getContent();
             if (messageContent instanceof String) {
-                mimeBodyPart.setText((String) messageContent);
+                mimeBodyPart.setContent(messageContent, message.getContentType());
             } else if (messageContent instanceof MimeMultipart) {
-                mimeBodyPart.setContent((MimeMultipart) messageContent, message.getContentType());
+                mimeBodyPart.setContent((MimeMultipart)messageContent);
             }
 
             MimeMultipart signedMultipart = gen.generate(mimeBodyPart);
