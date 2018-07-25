@@ -32,18 +32,35 @@ public class SignedEmailIT {
 
     private static final int SMTP_PORT = 4025;
     private static final String SMTP_PROTOCOL = "smtp+smime";
-    private static final String EMAIL_ADDRESS_WITH_CERT = "workflow.noreply@iu.edu";
-    private static final String EMAIL_ADDRESS_WITHOUT_CERT = "workflow.nocert.iu.edu";
+    private static final String EMAIL_ADDRESS_WITHOUT_CERT = "workflow.nocert@iu.edu";
+
+    private String emailAddressWithCert;
 
     @Before
     public void setup() throws IOException {
         // properties
-        final InputStream input = new FileInputStream("/opt/j2ee/security/kr/rice-keystore.properties");
+        String keystorePropertyFilePath = System.getenv("KEYSTORE_PROPERTY_FILE_PATH");
+        if (keystorePropertyFilePath == null) {
+            keystorePropertyFilePath = "/opt/j2ee/security/kr/rice-keystore.properties";
+        }
+
+        final InputStream input = new FileInputStream(keystorePropertyFilePath);
         Properties keystoreProperties = new Properties();
         keystoreProperties.load(input);
         properties.put("mail.keystore.file",  keystoreProperties.getProperty("keystore.file"));
         properties.put("mail.keystore.password", keystoreProperties.getProperty("keystore.password"));
-        properties.put("mail.keystore.workflow.noreply.password", keystoreProperties.getProperty("workflow.noreply@iu.edu"));
+
+        Enumeration<String> propertyNames = (Enumeration<String>) keystoreProperties.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            String propertyName =  propertyNames.nextElement();
+            if (propertyName.contains("@")) {
+                emailAddressWithCert = propertyName;
+                String localPart = propertyName.substring(0, propertyName.indexOf("@"));
+                properties.put("mail.keystore." + localPart + ".password", keystoreProperties.getProperty(propertyName));
+                break;
+            }
+        }
+        
         // server setup
         final ServerSetup serverSetup = new ServerSetup(SMTP_PORT, null, SMTP_PROTOCOL);
         // server
@@ -65,7 +82,7 @@ public class SignedEmailIT {
     public void testTextEmailIsSigned() throws MessagingException {
         MimeMessage msg = new MimeMessage(session);
         msg.setText("content");
-        msg.setFrom(new InternetAddress(EMAIL_ADDRESS_WITH_CERT));
+        msg.setFrom(new InternetAddress(emailAddressWithCert));
         msg.addRecipient(Message.RecipientType.TO,
                 new InternetAddress("bar@example.com"));
         msg.setSubject("Testing signed text email");
@@ -98,7 +115,7 @@ public class SignedEmailIT {
         MimeMessage msg = new MimeMessage(session);
         msg.setContent("<p>content</p>", "text/html");
         msg.saveChanges();
-        msg.setFrom(new InternetAddress(EMAIL_ADDRESS_WITH_CERT));
+        msg.setFrom(new InternetAddress(emailAddressWithCert));
         msg.addRecipient(Message.RecipientType.TO,
                 new InternetAddress("bar@example.com"));
         msg.setSubject("Testing signed text/html email");
@@ -130,7 +147,7 @@ public class SignedEmailIT {
         multiPart.addBodyPart(textPart);
         msg.setContent(multiPart);
 
-        msg.setFrom(new InternetAddress(EMAIL_ADDRESS_WITH_CERT));
+        msg.setFrom(new InternetAddress(emailAddressWithCert));
         msg.addRecipient(Message.RecipientType.TO,
                 new InternetAddress("bar@example.com"));
         msg.setSubject("Testing signed multipart email");

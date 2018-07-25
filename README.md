@@ -44,7 +44,6 @@ class Mailer {
         properties.put("mail.smtp+smime.auth", "true");
         properties.put("mail.smtp+smime.starttls.enable", "true");
         
-        Authenticator auth = new SMTPAuthenticator(username, password);
         mailSession = Session.getInstance(properties, new javax.mail.Authenticator() {
           protected PasswordAuthentication getPasswordAuthentication() {
              return new PasswordAuthentication(username, password);
@@ -93,3 +92,22 @@ class Mailer {
 }
 ```
 
+## Testing Configuration
+
+### Unit Tests
+
+The unit tests (under `src/test` can run without configuration). 
+
+### Integration Tests
+
+The integration tests (under `src/it`) require the following configuration:
+
+A properties file whose default location is `/opt/j2ee/security/kr//opt/j2ee/security/kr/rice-keystore.properties`. This location can be overridden with a `KEYSTORE_PROPERTY_FILE_PATH` environment variable. 
+
+The properties file should have `keystore.file` and `keystore.password` entries as well as at least one email address mapped to its certificate password. For example:
+
+```properties
+keystore.file=/path/to/keystore.jks
+keystore.password=73cur3P@ssw0rd
+foo@example.com=p@ssw0rd4al1as
+```
