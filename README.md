@@ -111,3 +111,13 @@ keystore.file=/path/to/keystore.jks
 keystore.password=73cur3P@ssw0rd
 foo@example.com=p@ssw0rd4al1as
 ```
+
+## Adding license headers
+
+Each source file in this project needs to include the standard license header at the top of the file.  This header can be added automatically by running the following:
+
+```sh
+mvn license:update-file-header
+```
+
+When a pull request is submitted the license headers will be verified and we will not be able to merge pull requests with files which lack this header.
